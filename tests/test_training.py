@@ -74,3 +74,16 @@ def test_train_resumes_and_player_plays_legal_moves(dataset, tmp_path):
     assert probs.sum() == pytest.approx(1, abs=1e-4) and wdl.sum() == pytest.approx(1, abs=1e-4)
     assert player.choose(board) in board.legal_moves()
     assert match(player, RandomPlayer(0), games=2, max_plies=20).games == 2
+
+
+def test_play_session_handles_commands(dataset, tmp_path):
+    from chessml_train.play import play
+
+    train(TrainConfig(data=str(dataset), out=str(tmp_path), blocks=1, filters=8, batch_size=16,
+                      epochs=1, eval_every=2, max_steps=2), log=lambda _: None)
+    inputs = iter(["e4", "hint", "nonsense", "moves", "flip", "undo", "d4", "quit"])
+    lines = []
+    assert play(str(tmp_path / "best.pt"), input_fn=lambda _: next(inputs), color=False,
+                output=lines.append) is None
+    text = "\n".join(lines)
+    assert "The model would play" in text and "unrecognized move" in text and "Model plays" in text
