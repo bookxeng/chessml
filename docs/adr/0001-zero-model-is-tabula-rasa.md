@@ -1,0 +1,3 @@
+# The Zero model is tabula rasa
+
+The Zero model learns only from its own self-play, starting from random weights. It never trains on human games, never starts from the Supervised model's weights, never uses the Supervised model's outputs as targets, and never uses Stockfish to adjudicate unfinished games (truncated games are scored as draws instead). Both models share the same network architecture and Search code, so a warm start would be easy and much faster. We rule it out on purpose, because the point of the Zero model is to show that it can learn with no human knowledge. Stockfish and the Supervised model may be *opponents* in evaluation, but evaluation games are never training data.

@@ -1,0 +1,3 @@
+# Store compact positions, encode to planes in batches at training time
+
+Training positions are stored as compact numpy shards (`squares int8[64]`, castling, en passant square, halfmove clock, `action int16`, `result int8`; about 80 bytes each), not as the 19x8x8 float planes the network consumes. At 40 million positions, stored planes would take about 195 GB, compared with about 3.2 GB compact. Colab's 2 CPUs cannot run the pure-Python `encode_board` per position fast enough to keep the GPU busy, so a vectorized batch encoder builds planes for a whole batch at once. A test ensures that encoder matches `encode_board` exactly. The train/validation split is by game, not by position.
