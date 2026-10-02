@@ -56,6 +56,16 @@ Lower-level API: `Board` (`push`, `pop`, `legal_moves`, `fen`, `outcome`, `copy`
 `hash`), `encode_board`, `move_to_action`, `action_to_move`, `legal_action_mask`,
 `move_to_san`, `parse_san`, `perft`.
 
+## Training (Supervised model)
+
+```sh
+python -m chessml_train.lichess --month 2026-08 --games 500000 --out data/lichess-2026-08   # build dataset
+python -m chessml_train.train --data data/lichess-2026-08 --out runs/sl-10x128              # train (resumable)
+python -m chessml_train.arena --model runs/sl-10x128/best.pt --games 100                    # vs RandomPlayer
+```
+
+On Colab use `notebooks/train_supervised.ipynb`; checkpoints go to Google Drive and a rerun resumes.
+
 ## Tests
 
 ```sh
