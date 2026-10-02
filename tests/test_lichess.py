@@ -27,6 +27,8 @@ def test_game_positions_replay_the_game():
     assert list(records["result"]) == [1, -1, 1, -1, 1, -1, 1]
     board = Board()
     for rec in records:
+        np.testing.assert_array_equal(rec["squares"], board.squares)
+        assert (rec["turn"], rec["castling"]) == (board.turn, board.castling)
         move = action_to_move(int(rec["action"]), board)
         assert move in board.legal_moves()
         board.push(move)
