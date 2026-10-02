@@ -129,10 +129,10 @@ def train(cfg: TrainConfig, log=print) -> dict:
                        "step": step, "best_val_loss": best,
                        "train_config": asdict(cfg), "net_config": asdict(net_config)})
 
-    metrics_file = (out / "metrics.jsonl").open("a")
     def record(entry: dict):
-        metrics_file.write(json.dumps(entry) + "\n")
-        metrics_file.flush()
+        # Reopened per write so synced folders (Google Drive) see each line promptly.
+        with (out / "metrics.jsonl").open("a") as f:
+            f.write(json.dumps(entry) + "\n")
 
     stop_at = total_steps if cfg.max_steps is None else min(total_steps, cfg.max_steps)
     running = np.zeros(4)
@@ -178,7 +178,6 @@ def train(cfg: TrainConfig, log=print) -> dict:
 
             if step >= stop_at or step % steps_per_epoch == 0:
                 break
-    metrics_file.close()
     return {"step": step, "best_val_loss": best}
 
 
