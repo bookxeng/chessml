@@ -31,7 +31,7 @@ _MIRROR = np.arange(64) ^ 56
 def position_record(board: Board, move: Move, result_for_white: int) -> tuple:
     """One POSITION_DTYPE row for `move` played in `board` (before the move is pushed)."""
     return (
-        board.squares,
+        tuple(board.squares),  # snapshot: board.squares is mutated by later pushes
         board.turn,
         board.castling,
         -1 if board.ep_square is None else board.ep_square,
