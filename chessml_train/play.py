@@ -2,6 +2,7 @@
 
     python -m chessml_train.play --model runs/sl-10x128/best.pt              # you play white
     python -m chessml_train.play --model runs/sl-10x128/best.pt --color black
+    python -m chessml_train.play --model runs/sl-10x128/best.pt --simulations 800 --device cuda
 
 Each turn shows the board (last move highlighted), the model's Value as a win/draw/loss
 bar from white's point of view, and on the model's turns its top Policy candidates.
@@ -18,7 +19,8 @@ import numpy as np
 from chessml import Board, Move, WHITE, BLACK, move_to_san
 from chessml.players import parse_move
 
-from .player import PolicyPlayer, load_model
+from .mcts import SearchResult
+from .player import PolicyPlayer, SearchPlayer, load_model
 
 GLYPHS = {1: "♟", 2: "♞", 3: "♝", 4: "♜", 5: "♛", 6: "♚"}
 LETTERS = ".PNBRQK"
@@ -78,15 +80,33 @@ def render_candidates(board: Board, moves: list[Move], probs: np.ndarray, top: i
     return "\n".join(lines)
 
 
+def render_search(board: Board, result: SearchResult, top: int = 5, chosen: Move | None = None) -> str:
+    """Top moves by visits, with each move's expected score from Search and its Policy prior."""
+    total = result.visits.sum()
+    lines = ["   move      visits                expected score   policy"]
+    for i in np.argsort(-result.visits)[:top]:
+        share = result.visits[i] / total
+        score = "-" if np.isnan(result.q[i]) else f"{(result.q[i] + 1) / 2:.1%}"
+        mark = "  ← plays" if result.moves[i] == chosen else ""
+        lines.append(f"   {move_to_san(board, result.moves[i], result.moves):<8} {int(result.visits[i]):>5} "
+                     f"{_bar(float(share), 12)}  {score:>14}   {result.priors[i]:6.1%}{mark}")
+    return "\n".join(lines)
+
+
 def _format_moves(sans: list[str]) -> str:
     return " ".join(f"{i // 2 + 1}. {sans[i]}" + (f" {sans[i + 1]}" if i + 1 < len(sans) else "")
                     for i in range(0, len(sans), 2))
 
 
 def play(model_path: str, human: int = WHITE, device: str = "cpu", color: bool = True,
-         input_fn=input, output=print) -> str | None:
-    """Run a game; returns the result string, or None if the human quits."""
-    bot = PolicyPlayer(load_model(model_path, device))
+         simulations: int = 0, input_fn=input, output=print) -> str | None:
+    """Run a game; returns the result string, or None if the human quits.
+
+    simulations = 0 plays the raw Policy; otherwise the model thinks with that many Search simulations.
+    """
+    model = load_model(model_path, device)
+    bot = PolicyPlayer(model)
+    searcher = SearchPlayer(model, simulations) if simulations else None
     board = Board()
     flip = human == BLACK
     sans: list[str] = []
@@ -102,9 +122,15 @@ def play(model_path: str, human: int = WHITE, device: str = "cpu", color: bool =
         output(render_value(wdl, board))
 
         if board.turn != human:
-            move = moves[int(probs.argmax())]
-            output(f"\n {side} (model) to move. Top candidates from its Policy:")
-            output(render_candidates(board, moves, probs, chosen=move))
+            if searcher:
+                search = searcher.analyse(board)
+                move = search.best
+                output(f"\n {side} (model) to move. Top moves after {search.simulations} Search simulations:")
+                output(render_search(board, search, chosen=move))
+            else:
+                move = moves[int(probs.argmax())]
+                output(f"\n {side} (model) to move. Top candidates from its Policy:")
+                output(render_candidates(board, moves, probs, chosen=move))
             san = move_to_san(board, move, moves)
             output(f"\n Model plays {san}\n" + "─" * 60)
             sans.append(san)
@@ -119,7 +145,8 @@ def play(model_path: str, human: int = WHITE, device: str = "cpu", color: bool =
                 output("Game abandoned.")
                 return None
             if cmd == "hint":
-                output(" The model would play:\n" + render_candidates(board, moves, probs))
+                output(" The model would play:\n" + (render_search(board, searcher.analyse(board)) if searcher
+                                                     else render_candidates(board, moves, probs)))
                 continue
             if cmd == "moves":
                 output(" " + " ".join(sorted(move_to_san(board, m, moves) for m in moves)))
@@ -155,6 +182,8 @@ def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--model", required=True, help="checkpoint (best.pt / latest.pt)")
     ap.add_argument("--color", choices=["white", "black"], default="white", help="the colour you play")
+    ap.add_argument("--simulations", type=int, default=0,
+                    help="Search simulations per move (0 = raw policy, 800 = full strength)")
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--no-color", action="store_true", help="plain text board (for terminals without ANSI colours)")
     args = ap.parse_args(argv)
@@ -162,7 +191,8 @@ def main(argv: list[str] | None = None) -> None:
         os.system("")  # enables ANSI escape codes in the classic Windows console
     sys.stdout.reconfigure(encoding="utf-8")  # chess glyphs, even when output is redirected
     try:
-        play(args.model, WHITE if args.color == "white" else BLACK, args.device, not args.no_color)
+        play(args.model, WHITE if args.color == "white" else BLACK, args.device, not args.no_color,
+             args.simulations)
     except (KeyboardInterrupt, EOFError):
         print("\nGame abandoned.")
 
