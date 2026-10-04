@@ -8,6 +8,7 @@ import torch
 
 from chessml import Board, Move, encode_board, move_to_action
 
+from .mcts import MCTS, SearchResult
 from .model import ChessNet, NetConfig
 
 
@@ -39,3 +40,41 @@ class PolicyPlayer:
         moves = board.legal_moves()
         probs, _ = self.evaluate(board, moves)
         return moves[int(probs.argmax())]
+
+
+class NetEvaluator:
+    """Batched network calls for Search: Policy priors over each leaf's legal moves, and a scalar
+    Value (win prob - loss prob) for the side to move."""
+
+    def __init__(self, model: ChessNet):
+        self.model = model
+        self.device = next(model.parameters()).device
+
+    @torch.no_grad()
+    def __call__(self, obs: np.ndarray, actions: list[np.ndarray]) -> tuple[list[np.ndarray], np.ndarray]:
+        x = torch.from_numpy(obs).to(self.device)
+        with torch.autocast(self.device.type, dtype=torch.float16, enabled=self.device.type == "cuda"):
+            logits, wdl = self.model(x)
+        wdl = torch.softmax(wdl.float(), 1)
+        values = (wdl[:, 0] - wdl[:, 2]).cpu().numpy()
+        logits = logits.float().cpu().numpy()
+        priors = []
+        for row, a in zip(logits, actions):
+            z = row[a] - row[a].max()
+            p = np.exp(z)
+            priors.append(p / p.sum())
+        return priors, values
+
+
+class SearchPlayer:
+    """Plays the most-visited move after `simulations` simulations of Search."""
+
+    def __init__(self, model: ChessNet, simulations: int = 800, batch_size: int = 32, c_puct: float = 2.0):
+        self.simulations = simulations
+        self.mcts = MCTS(NetEvaluator(model), c_puct=c_puct, batch_size=batch_size)
+
+    def analyse(self, board: Board) -> SearchResult:
+        return self.mcts.search(board, self.simulations)
+
+    def choose(self, board: Board) -> Move:
+        return self.analyse(board).best

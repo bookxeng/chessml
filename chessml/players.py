@@ -25,6 +25,54 @@ class RandomPlayer:
         return self.rng.choice(board.legal_moves())
 
 
+_PIECE_VALUES = (0, 1, 3, 3, 5, 9, 0)
+_MATE = 1000
+
+
+def _material(board: Board) -> int:
+    """Material balance from the side to move's point of view."""
+    return sum(_PIECE_VALUES[abs(p)] * (1 if p * board.turn > 0 else -1) for p in board.squares if p)
+
+
+class GreedyPlayer:
+    """Two-ply material search: grabs the best material it can keep after the opponent's best reply.
+
+    It never hangs a piece to a one-move capture and takes mate in one, but sees nothing deeper.
+    Ties are broken randomly. Draws (stalemate, repetition) count as 0, i.e. equal material.
+    """
+
+    def __init__(self, seed: int | None = None):
+        self.rng = random.Random(seed)
+
+    def _score_after(self, board: Board) -> int:
+        """Score for the player who just moved, assuming the opponent replies to maximise material."""
+        replies = board.legal_moves()
+        if not replies:
+            return _MATE if board.in_check() else 0
+        worst = None
+        for reply in replies:
+            board.push(reply)
+            if not board.legal_moves() and board.in_check():
+                score = -_MATE
+            else:
+                score = _material(board)  # side to move is us again
+            board.pop()
+            worst = score if worst is None else min(worst, score)
+        return worst
+
+    def choose(self, board: Board) -> Move:
+        best, best_moves = None, []
+        for move in board.legal_moves():
+            board.push(move)
+            score = self._score_after(board)
+            board.pop()
+            if best is None or score > best:
+                best, best_moves = score, [move]
+            elif score == best:
+                best_moves.append(move)
+        return self.rng.choice(best_moves)
+
+
 def parse_move(board: Board, text: str) -> Move:
     """Parse a move typed as UCI (e2e4, e7e8q) or SAN (Nf3, O-O, exd5)."""
     text = text.strip()
