@@ -100,3 +100,25 @@ def test_play_session_with_search(dataset, tmp_path):
          output=lines.append)
     text = "\n".join(lines)
     assert "Search simulations" in text and "expected score" in text
+
+
+def test_play_explain_command(dataset, tmp_path):
+    from chessml_train.play import play
+
+    class Backend:
+        name = "fake"
+
+        def complete(self, messages):
+            import json
+            facts = json.loads(messages[1]["content"])
+            return f"{facts['best_move']} is the engine's choice."
+
+    train(TrainConfig(data=str(dataset), out=str(tmp_path), blocks=1, filters=8, batch_size=16,
+                      epochs=1, eval_every=2, max_steps=2), log=lambda _: None)
+    inputs = iter(["explain", "e4", "explain", "quit"])
+    lines = []
+    play(str(tmp_path / "best.pt"), simulations=16, llm=Backend(), input_fn=lambda _: next(inputs),
+         color=False, output=lines.append)
+    text = "\n".join(lines)
+    assert "Nothing to explain yet" in text
+    assert "is the engine's choice." in text and "Why " in text

@@ -66,6 +66,18 @@ python -m chessml_train.arena --model runs/sl-10x128/best.pt --games 100        
 
 On Colab use `notebooks/train_supervised.ipynb`; checkpoints go to Google Drive and a rerun resumes.
 
+## Explanations (LLM)
+
+`pip install -e ".[llm]"`, then either run [Ollama](https://ollama.com) with `ollama pull qwen3:8b`, or
+use Hugging Face transformers in-process (downloads `Qwen/Qwen3-1.7B` on first use):
+
+```sh
+python -m chessml_train.explain --model runs/sl-10x128/best.pt --llm ollama --show-facts
+python -m chessml_train.play --model runs/sl-10x128/best.pt --simulations 800 --device cuda --llm hf
+```
+
+The LLM only puts Search's findings into words and a guardrail rejects invented moves (docs/adr/0004).
+
 ## Tests
 
 ```sh
