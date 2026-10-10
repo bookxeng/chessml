@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -68,10 +68,27 @@ class SearchResult:
     priors: np.ndarray        # Policy priors per root move
     value: float              # network value of the root position
     simulations: int
+    lines: list[list[Move]] = field(default_factory=list)  # main line starting with each root move
 
     @property
     def best(self) -> Move:
         return self.moves[int(self.visits.argmax())]
+
+    @property
+    def main_line(self) -> list[Move]:
+        """Expected continuation after the best move, following the most-visited replies."""
+        return self.lines[int(self.visits.argmax())] if self.lines else [self.best]
+
+
+def _main_line(root: Node, i: int, max_len: int = 8) -> list[Move]:
+    """Root move i followed by the most-visited reply at each ply, while the tree has visits."""
+    line = [root.moves[i]]
+    node = root.children[i]
+    while node is not None and node.expanded and node.N.sum() > 0 and len(line) < max_len:
+        j = int(node.N.argmax())
+        line.append(node.moves[j])
+        node = node.children[j]
+    return line
 
 
 class MCTS:
@@ -112,7 +129,8 @@ class MCTS:
                 done += len(pending)
 
         q = np.where(root.N > 0, root.W / np.maximum(root.N, 1), np.nan)
-        return SearchResult(root.moves, root.N.copy(), q, root.priors, root.value, done)
+        lines = [_main_line(root, i) for i in range(len(root.moves))]
+        return SearchResult(root.moves, root.N.copy(), q, root.priors, root.value, done, lines)
 
     # ---------------------------------------------------------------- internals
 

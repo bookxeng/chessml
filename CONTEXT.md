@@ -35,6 +35,10 @@ _Avoid_: Evaluation, score, eval (when meaning the network output)
 Monte Carlo tree search guided by Policy and Value, used to choose moves. Its per-move visit count and average result are the only per-move judgments of a move's outcome.
 _Avoid_: Lookahead, engine (the rules engine is a different thing)
 
+**Main line**:
+The sequence of moves Search expects after a candidate move, following the most-visited reply at each ply.
+_Avoid_: Principal variation (fine in chess writing, but use one term in this project), PV
+
 **Full search**:
 A self-play move searched with the full simulation budget; only these moves become Policy training targets.
 
@@ -56,3 +60,17 @@ _Avoid_: Unfinished game, timeout
 The fixed, ordered set of opponents used to measure a model's strength: RandomPlayer, a material-greedy bot, Stockfish at limited strength levels, and the human author.
 Evaluation games against the ladder are never training data.
 _Avoid_: Benchmark, test suite
+
+### Explanations
+
+**Explanation**:
+A short natural-language account, written by an LLM, of why Search chose a move. It may use only Engine facts.
+_Avoid_: Commentary, analysis (the LLM does not analyse)
+
+**Engine facts**:
+The data Search produced about a position that an Explanation may rely on: candidate moves with expected scores, main lines, captures, checks and material.
+_Avoid_: Context, evaluation
+
+**Guardrail**:
+The check that rejects an Explanation naming a move that is not in the Engine facts.
+_Avoid_: Validator, filter

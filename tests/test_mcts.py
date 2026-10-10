@@ -95,3 +95,17 @@ def test_stockfish_player_plays_legal_moves():
     with StockfishPlayer(path, elo=1400, movetime_ms=20) as sf:
         board = Board()
         assert sf.choose(board) in board.legal_moves()
+
+
+def test_main_line_is_a_legal_continuation_and_finds_the_mate():
+    result = MCTS(uniform, batch_size=8).search(Board("6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1"), 300)
+    assert result.main_line[0] == Move.from_uci("a1a8")
+    board = Board("r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3")
+    result = MCTS(material, batch_size=8).search(board, 400)
+    assert len(result.lines) == len(result.moves)
+    for line in result.lines:
+        b = board.copy()
+        for move in line:
+            assert move in b.legal_moves()
+            b.push(move)
+    assert len(result.main_line) >= 2

@@ -3,10 +3,12 @@
     python -m chessml_train.play --model runs/sl-10x128/best.pt              # you play white
     python -m chessml_train.play --model runs/sl-10x128/best.pt --color black
     python -m chessml_train.play --model runs/sl-10x128/best.pt --simulations 800 --device cuda
+    python -m chessml_train.play --model runs/sl-10x128/best.pt --simulations 800 --device cuda --llm ollama
 
 Each turn shows the board (last move highlighted), the model's Value as a win/draw/loss
 bar from white's point of view, and on the model's turns its top Policy candidates.
-Commands: hint (model's top moves for you), moves, undo, flip, quit.
+Commands: hint (model's top moves for you), explain (an LLM explains the model's last move;
+needs --simulations and --llm), moves, undo, flip, quit.
 """
 from __future__ import annotations
 
@@ -19,6 +21,7 @@ import numpy as np
 from chessml import Board, Move, WHITE, BLACK, move_to_san
 from chessml.players import parse_move
 
+from .explain import AUDIENCES, LLMBackend, explain, make_backend
 from .mcts import SearchResult
 from .player import PolicyPlayer, SearchPlayer, load_model
 
@@ -99,10 +102,12 @@ def _format_moves(sans: list[str]) -> str:
 
 
 def play(model_path: str, human: int = WHITE, device: str = "cpu", color: bool = True,
-         simulations: int = 0, input_fn=input, output=print) -> str | None:
+         simulations: int = 0, llm: LLMBackend | None = None, audience: str = "club",
+         input_fn=input, output=print) -> str | None:
     """Run a game; returns the result string, or None if the human quits.
 
     simulations = 0 plays the raw Policy; otherwise the model thinks with that many Search simulations.
+    llm enables the `explain` command, which explains the model's last searched move.
     """
     model = load_model(model_path, device)
     bot = PolicyPlayer(model)
@@ -110,8 +115,9 @@ def play(model_path: str, human: int = WHITE, device: str = "cpu", color: bool =
     board = Board()
     flip = human == BLACK
     sans: list[str] = []
+    last_decision: tuple[Board, SearchResult, str] | None = None  # position, search, move played
     output("You are " + ("white" if human == WHITE else "black")
-           + ". Enter moves as SAN (Nf3) or UCI (g1f3). Commands: hint, moves, undo, flip, quit.\n")
+           + ". Enter moves as SAN (Nf3) or UCI (g1f3). Commands: hint, explain, moves, undo, flip, quit.\n")
 
     while (result := board.outcome()) is None:
         last = board.move_stack[-1] if board.move_stack else None
@@ -132,6 +138,8 @@ def play(model_path: str, human: int = WHITE, device: str = "cpu", color: bool =
                 output(f"\n {side} (model) to move. Top candidates from its Policy:")
                 output(render_candidates(board, moves, probs, chosen=move))
             san = move_to_san(board, move, moves)
+            if searcher:
+                last_decision = (board.copy(), search, san)
             output(f"\n Model plays {san}\n" + "─" * 60)
             sans.append(san)
             board.push(move)
@@ -148,6 +156,20 @@ def play(model_path: str, human: int = WHITE, device: str = "cpu", color: bool =
                 output(" The model would play:\n" + (render_search(board, searcher.analyse(board)) if searcher
                                                      else render_candidates(board, moves, probs)))
                 continue
+            if cmd == "explain":
+                if llm is None:
+                    output(" Explanations are off. Start with --llm ollama (or --llm hf).")
+                elif last_decision is None:
+                    output(" Nothing to explain yet: explanations need the model to have moved with Search"
+                           " (--simulations).")
+                else:
+                    position, decided, played = last_decision
+                    output(f" Asking {llm.name} why the model played {played}...")
+                    result = explain(position, decided, llm, audience)
+                    output(f"\n Why {played}?\n {result.text}")
+                    if result.source == "template":
+                        output(f" (template fallback: {'; '.join(result.rejected)})")
+                continue
             if cmd == "moves":
                 output(" " + " ".join(sorted(move_to_san(board, m, moves) for m in moves)))
                 continue
@@ -161,6 +183,7 @@ def play(model_path: str, human: int = WHITE, device: str = "cpu", color: bool =
                     continue
                 board.pop(); board.pop()
                 sans[-2:] = []
+                last_decision = None
                 break
             try:
                 move = parse_move(board, text)
@@ -185,14 +208,19 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--simulations", type=int, default=0,
                     help="Search simulations per move (0 = raw policy, 800 = full strength)")
     ap.add_argument("--device", default="cpu")
+    ap.add_argument("--llm", choices=["none", "ollama", "openai", "hf"], default="none",
+                    help="LLM backend for the explain command")
+    ap.add_argument("--llm-model", default=None, help="override the backend's default model")
+    ap.add_argument("--audience", choices=sorted(AUDIENCES), default="club")
     ap.add_argument("--no-color", action="store_true", help="plain text board (for terminals without ANSI colours)")
     args = ap.parse_args(argv)
     if os.name == "nt":
         os.system("")  # enables ANSI escape codes in the classic Windows console
     sys.stdout.reconfigure(encoding="utf-8")  # chess glyphs, even when output is redirected
     try:
+        llm = None if args.llm == "none" else make_backend(args.llm, args.llm_model)
         play(args.model, WHITE if args.color == "white" else BLACK, args.device, not args.no_color,
-             args.simulations)
+             args.simulations, llm, args.audience)
     except (KeyboardInterrupt, EOFError):
         print("\nGame abandoned.")
 

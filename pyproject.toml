@@ -12,6 +12,7 @@ dependencies = ["numpy"]
 [project.optional-dependencies]
 dev = ["pytest"]
 train = ["torch"]
+llm = ["openai", "transformers", "accelerate"]
 
 [project.scripts]
 chessml = "chessml.cli:main"
