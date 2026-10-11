@@ -61,6 +61,12 @@ The fixed, ordered set of opponents used to measure a model's strength: RandomPl
 Evaluation games against the ladder are never training data.
 _Avoid_: Benchmark, test suite
 
+### Playing
+
+**Analysis board**:
+A session with no opponent, where the user enters moves for both sides and asks Search and the LLM about any position.
+_Avoid_: Sandbox, free mode
+
 ### Explanations
 
 **Explanation**:

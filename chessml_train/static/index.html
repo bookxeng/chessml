@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>chessml</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>chessml</h1>
+    <div class="controls">
+      <select id="mode" aria-label="Game mode">
+        <option value="play-white">Play as White</option>
+        <option value="play-black">Play as Black</option>
+        <option value="analysis">Analysis board</option>
+      </select>
+      <button id="new">New game</button>
+      <span id="fen-box" hidden>
+        <input id="fen" placeholder="Paste a FEN to set up a position" spellcheck="false">
+        <button id="load-fen">Load</button>
+      </span>
+    </div>
+  </header>
+
+  <main>
+    <section class="board-col">
+      <div id="status" class="status">Loading…</div>
+      <div class="board-wrap">
+        <div id="board" class="board" aria-label="Chess board"></div>
+        <div id="promo" class="promo" hidden></div>
+      </div>
+      <div id="moves" class="moves"></div>
+    </section>
+
+    <aside class="panel">
+      <div class="card">
+        <div class="card-title">Model's evaluation <span class="muted">(network Value)</span></div>
+        <div class="evalbar"><span id="ev-w" class="ev-w"></span><span id="ev-d" class="ev-d"></span><span id="ev-b" class="ev-b"></span></div>
+        <div class="ev-labels"><span id="ev-wt"></span><span id="ev-dt"></span><span id="ev-bt"></span></div>
+      </div>
+
+      <div class="buttons">
+        <button id="hint" title="Search this position and show the engine's top moves">Hint / analyse</button>
+        <button id="explain" title="Ask the LLM why">Explain</button>
+        <button id="undo">Undo</button>
+        <button id="flip">Flip board</button>
+      </div>
+
+      <div class="card settings">
+        <label>Search
+          <select id="sims">
+            <option value="0">Raw policy (instant)</option>
+            <option value="100">100 simulations</option>
+            <option value="400">400 simulations</option>
+            <option value="800">800 simulations</option>
+            <option value="1600">1600 simulations</option>
+          </select>
+        </label>
+        <label>Explain for
+          <select id="audience">
+            <option value="club">Club player</option>
+            <option value="beginner">Beginner</option>
+          </select>
+        </label>
+        <div id="llm-name" class="muted small"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" id="search-title">Engine's top moves</div>
+        <div id="search" class="muted small">Make a move or press Hint to see what Search thinks.</div>
+      </div>
+
+      <div class="card" id="explain-card" hidden>
+        <div class="card-title">Why <span id="explain-move"></span>? <span id="explain-badge" class="badge"></span></div>
+        <p id="explain-text"></p>
+        <div id="explain-note" class="muted small"></div>
+        <details><summary class="small">Engine facts given to the LLM</summary><pre id="explain-facts"></pre></details>
+      </div>
+    </aside>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

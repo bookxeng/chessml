@@ -13,12 +13,16 @@ dependencies = ["numpy"]
 dev = ["pytest"]
 train = ["torch"]
 llm = ["openai", "transformers", "accelerate"]
+web = ["fastapi", "uvicorn"]
 
 [project.scripts]
 chessml = "chessml.cli:main"
 
 [tool.setuptools]
 packages = ["chessml", "chessml_train"]
+
+[tool.setuptools.package-data]
+chessml_train = ["static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
