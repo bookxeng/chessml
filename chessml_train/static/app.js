@@ -77,31 +77,89 @@ function renderBoard() {
         piece.className = "piece " + (p > 0 ? "w" : "b");
         piece.textContent = GLYPH[Math.abs(p)];
         if (canMoveFrom(name)) {
-          piece.draggable = true;
-          piece.addEventListener("dragstart", (e) => {
-            selected = name;
-            e.dataTransfer.setData("text/plain", name);
-            setTimeout(renderBoard, 0);
-          });
+          piece.addEventListener("pointerdown", (e) => startDrag(e, name, piece));
         } else {
           piece.classList.add("fixed");
         }
         sq.appendChild(piece);
       }
       sq.addEventListener("click", () => onSquare(name));
-      sq.addEventListener("dragover", (e) => { if (targets.has(name) || selected) e.preventDefault(); });
-      sq.addEventListener("drop", (e) => {
-        e.preventDefault();
-        const from = e.dataTransfer.getData("text/plain") || selected;
-        if (from) tryMove(from, name);
-      });
       board.appendChild(sq);
     }
   }
 }
 
+// Dragging uses pointer events (mouse, touch, pen). The board is NOT re-rendered while a
+// piece is being dragged: removing the dragged element would cancel the drag.
+let drag = null;          // {from, piece, ghost, startX, startY, moved}
+let suppressClick = false;
+
+function showTargets(from) {
+  const targets = new Set(S.legal.filter((m) => m.from === from).map((m) => m.to));
+  for (const sq of $("board").children) {
+    const name = sq.dataset.sq;
+    sq.classList.toggle("sel", name === from);
+    sq.classList.toggle("target", targets.has(name));
+    sq.classList.toggle("occupied", targets.has(name) && !!sq.querySelector(".piece"));
+  }
+}
+
+function startDrag(e, from, piece) {
+  if (busy || e.button > 0) return;
+  e.preventDefault();  // no text selection or native image drag
+  drag = { from, piece, ghost: null, startX: e.clientX, startY: e.clientY, moved: false };
+  window.addEventListener("pointermove", onDragMove);
+  window.addEventListener("pointerup", onDragEnd, { once: true });
+  window.addEventListener("pointercancel", cancelDrag, { once: true });
+}
+
+function onDragMove(e) {
+  if (!drag) return;
+  if (!drag.moved) {
+    if (Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) < 4) return;  // still a click
+    drag.moved = true;
+    const rect = drag.piece.getBoundingClientRect();
+    const ghost = drag.piece.cloneNode(true);
+    ghost.classList.add("ghost");
+    ghost.style.width = `${rect.width}px`;
+    ghost.style.fontSize = getComputedStyle(drag.piece).fontSize;
+    document.body.appendChild(ghost);
+    drag.ghost = ghost;
+    drag.piece.classList.add("dragging");
+    selected = drag.from;
+    showTargets(drag.from);
+  }
+  drag.ghost.style.left = `${e.clientX}px`;
+  drag.ghost.style.top = `${e.clientY}px`;
+}
+
+function onDragEnd(e) {
+  window.removeEventListener("pointermove", onDragMove);
+  const d = drag;
+  drag = null;
+  if (!d || !d.moved) return;  // a plain click: the square's click handler selects the piece
+  d.ghost.remove();
+  suppressClick = true;        // the browser still fires a click after this pointerup
+  setTimeout(() => { suppressClick = false; }, 0);
+  const target = document.elementFromPoint(e.clientX, e.clientY)?.closest(".sq");
+  if (target && target.dataset.sq !== d.from) {
+    tryMove(d.from, target.dataset.sq);
+  } else {
+    selected = null;
+    renderBoard();
+  }
+}
+
+function cancelDrag() {
+  window.removeEventListener("pointermove", onDragMove);
+  if (drag?.ghost) drag.ghost.remove();
+  drag = null;
+  selected = null;
+  renderBoard();
+}
+
 function onSquare(name) {
-  if (busy) return;
+  if (busy || suppressClick) return;
   if (selected && S.legal.some((m) => m.from === selected && m.to === name)) {
     tryMove(selected, name);
   } else if (canMoveFrom(name) && selected !== name) {
