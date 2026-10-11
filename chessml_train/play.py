@@ -19,11 +19,11 @@ import sys
 import numpy as np
 
 from chessml import Board, Move, WHITE, BLACK, move_to_san
-from chessml.players import parse_move
 
-from .explain import AUDIENCES, LLMBackend, explain, make_backend
+from .explain import AUDIENCES, LLMBackend, make_backend
 from .mcts import SearchResult
-from .player import PolicyPlayer, SearchPlayer, load_model
+from .player import load_model
+from .session import GameSession
 
 GLYPHS = {1: "♟", 2: "♞", 3: "♝", 4: "♜", 5: "♛", 6: "♚"}
 LETTERS = ".PNBRQK"
@@ -109,40 +109,30 @@ def play(model_path: str, human: int = WHITE, device: str = "cpu", color: bool =
     simulations = 0 plays the raw Policy; otherwise the model thinks with that many Search simulations.
     llm enables the `explain` command, which explains the model's last searched move.
     """
-    model = load_model(model_path, device)
-    bot = PolicyPlayer(model)
-    searcher = SearchPlayer(model, simulations) if simulations else None
-    board = Board()
+    game = GameSession(load_model(model_path, device), simulations, llm, audience)
+    game.new_game(human)
     flip = human == BLACK
-    sans: list[str] = []
-    last_decision: tuple[Board, SearchResult, str] | None = None  # position, search, move played
     output("You are " + ("white" if human == WHITE else "black")
            + ". Enter moves as SAN (Nf3) or UCI (g1f3). Commands: hint, explain, moves, undo, flip, quit.\n")
 
-    while (result := board.outcome()) is None:
+    while game.outcome is None:
+        board = game.board
         last = board.move_stack[-1] if board.move_stack else None
-        moves = board.legal_moves()
-        probs, wdl = bot.evaluate(board, moves)
+        moves, probs, wdl = game.evaluate()
         side = "White" if board.turn == WHITE else "Black"
         output(render_board(board, last, flip, color))
         output(render_value(wdl, board))
 
-        if board.turn != human:
-            if searcher:
-                search = searcher.analyse(board)
-                move = search.best
-                output(f"\n {side} (model) to move. Top moves after {search.simulations} Search simulations:")
-                output(render_search(board, search, chosen=move))
+        if game.model_to_move:
+            position = board.copy()
+            decision = game.model_move()
+            if decision.search:
+                output(f"\n {side} (model) to move. Top moves after {decision.search.simulations} Search simulations:")
+                output(render_search(position, decision.search, chosen=decision.move))
             else:
-                move = moves[int(probs.argmax())]
                 output(f"\n {side} (model) to move. Top candidates from its Policy:")
-                output(render_candidates(board, moves, probs, chosen=move))
-            san = move_to_san(board, move, moves)
-            if searcher:
-                last_decision = (board.copy(), search, san)
-            output(f"\n Model plays {san}\n" + "─" * 60)
-            sans.append(san)
-            board.push(move)
+                output(render_candidates(position, moves, probs, chosen=decision.move))
+            output(f"\n Model plays {decision.san}\n" + "─" * 60)
             continue
 
         output(f"\n {side} (you) to move{' — you are in check!' if board.in_check() else ''}")
@@ -153,22 +143,25 @@ def play(model_path: str, human: int = WHITE, device: str = "cpu", color: bool =
                 output("Game abandoned.")
                 return None
             if cmd == "hint":
-                output(" The model would play:\n" + (render_search(board, searcher.analyse(board)) if searcher
+                output(" The model would play:\n" + (render_search(board, game.analyse()) if game.can_search
                                                      else render_candidates(board, moves, probs)))
                 continue
             if cmd == "explain":
                 if llm is None:
                     output(" Explanations are off. Start with --llm ollama (or --llm hf).")
-                elif last_decision is None:
+                    continue
+                try:
+                    decision = game.last_decision
+                    if decision is not None:
+                        output(f" Asking {llm.name} why the model played {decision.san}...")
+                    decision, result = game.explain_last()
+                except ValueError:
                     output(" Nothing to explain yet: explanations need the model to have moved with Search"
                            " (--simulations).")
-                else:
-                    position, decided, played = last_decision
-                    output(f" Asking {llm.name} why the model played {played}...")
-                    result = explain(position, decided, llm, audience)
-                    output(f"\n Why {played}?\n {result.text}")
-                    if result.source == "template":
-                        output(f" (template fallback: {'; '.join(result.rejected)})")
+                    continue
+                output(f"\n Why {decision.san}?\n {result.text}")
+                if result.source == "template":
+                    output(f" (template fallback: {'; '.join(result.rejected)})")
                 continue
             if cmd == "moves":
                 output(" " + " ".join(sorted(move_to_san(board, m, moves) for m in moves)))
@@ -181,25 +174,21 @@ def play(model_path: str, human: int = WHITE, device: str = "cpu", color: bool =
                 if len(board.move_stack) < 2:
                     output(" Nothing to undo.")
                     continue
-                board.pop(); board.pop()
-                sans[-2:] = []
-                last_decision = None
+                game.undo()
                 break
             try:
-                move = parse_move(board, text)
+                game.play(text)
             except ValueError as e:
                 output(f" {e}. Type 'hint' or 'moves' for help.")
                 continue
-            sans.append(move_to_san(board, move, moves))
-            board.push(move)
             output("─" * 60)
             break
 
+    board = game.board
     output(render_board(board, board.move_stack[-1] if board.move_stack else None, flip, color))
-    output(f"\n Game over: {result.result} ({result.reason.replace('_', ' ')})")
-    output(" " + _format_moves(sans))
-    return result.result
-
+    output(f"\n Game over: {game.outcome.result} ({game.outcome.reason.replace('_', ' ')})")
+    output(" " + _format_moves(game.sans))
+    return game.outcome.result
 
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])

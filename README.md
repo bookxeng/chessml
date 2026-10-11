@@ -66,6 +66,19 @@ python -m chessml_train.arena --model runs/sl-10x128/best.pt --games 100        
 
 On Colab use `notebooks/train_supervised.ipynb`; checkpoints go to Google Drive and a rerun resumes.
 
+## Web app
+
+`pip install -e ".[web,llm]"`, then:
+
+```sh
+python -m chessml_train.web --model runs/sl-10x128/best.pt --device cuda --llm ollama
+```
+
+It opens http://localhost:8000: play the model as white or black (click or drag pieces), see the
+network's eval bar and Search's top moves with their main lines, ask for a hint, undo, and press
+**Explain** for an LLM explanation. **Analysis board** mode lets you load any FEN and move both
+sides. The terminal game (`python -m chessml_train.play`) runs on the same `GameSession`.
+
 ## Explanations (LLM)
 
 `pip install -e ".[llm]"`, then either run [Ollama](https://ollama.com) with `ollama pull qwen3:8b`, or
